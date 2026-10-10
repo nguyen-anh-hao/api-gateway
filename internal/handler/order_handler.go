@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/exchange/trading-system/services/api-gateway/internal/client"
+	"github.com/nguyen-anh-hao/api-gateway/internal/client"
 )
 
 type placeOrderReq struct {

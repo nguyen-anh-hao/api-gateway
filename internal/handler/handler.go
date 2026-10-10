@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/exchange/trading-system/services/api-gateway/internal/client"
-	"github.com/exchange/trading-system/services/api-gateway/internal/metrics"
-	"github.com/exchange/trading-system/services/api-gateway/internal/middleware"
+	"github.com/nguyen-anh-hao/api-gateway/internal/client"
+	"github.com/nguyen-anh-hao/api-gateway/internal/metrics"
+	"github.com/nguyen-anh-hao/api-gateway/internal/middleware"
 )
 
 // reservedAmt tracks funds frozen by Reserve for an open (resting) order, so

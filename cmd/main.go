@@ -7,13 +7,13 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/exchange/trading-system/services/api-gateway/internal/client"
-	"github.com/exchange/trading-system/services/api-gateway/internal/handler"
-	"github.com/exchange/trading-system/services/api-gateway/internal/metrics"
-	"github.com/exchange/trading-system/services/api-gateway/internal/middleware"
-	"github.com/exchange/trading-system/services/api-gateway/internal/storage"
-	"github.com/exchange/trading-system/services/api-gateway/internal/swagger"
-	"github.com/exchange/trading-system/services/api-gateway/internal/telemetry"
+	"github.com/nguyen-anh-hao/api-gateway/internal/client"
+	"github.com/nguyen-anh-hao/api-gateway/internal/handler"
+	"github.com/nguyen-anh-hao/api-gateway/internal/metrics"
+	"github.com/nguyen-anh-hao/api-gateway/internal/middleware"
+	"github.com/nguyen-anh-hao/api-gateway/internal/storage"
+	"github.com/nguyen-anh-hao/api-gateway/internal/swagger"
+	"github.com/nguyen-anh-hao/api-gateway/internal/telemetry"
 )
 
 func env(key, def string) string {

@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"sync/atomic"
 
-	"github.com/exchange/trading-system/services/api-gateway/internal/middleware"
+	"github.com/nguyen-anh-hao/api-gateway/internal/middleware"
 )
 
 var accountSeq atomic.Uint64

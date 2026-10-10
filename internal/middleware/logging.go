@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/exchange/trading-system/services/api-gateway/internal/metrics"
+	"github.com/nguyen-anh-hao/api-gateway/internal/metrics"
 )
 
 var (

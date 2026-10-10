@@ -12,7 +12,7 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/exchange/trading-system/services/api-gateway/internal/metrics"
+	"github.com/nguyen-anh-hao/api-gateway/internal/metrics"
 )
 
 var matchingLatencyNs = metrics.Default.Gauge(
