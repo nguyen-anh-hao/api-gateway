@@ -1,0 +1,28 @@
+### Health Check
+GET http://localhost:8080/health
+
+### Place Order
+POST http://localhost:8080/orders
+Content-Type: application/json
+
+{
+  "account_id": 1001,
+  "symbol": "AAPL",
+  "side": "BUY",
+  "type": "LIMIT",
+  "price": "150.00",
+  "quantity": "10"
+}
+
+### Get Live Orderbook Depth
+GET http://localhost:8080/orderbook?symbol=AAPL&depth=20
+
+### Deposit via Gateway
+POST http://localhost:8080/treasury/deposit
+Content-Type: application/json
+
+{
+  "account_id": 1001,
+  "asset": "CASH",
+  "amount": "10000.00"
+}
