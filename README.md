@@ -75,3 +75,4 @@ GET http://localhost:8080/orderbook?symbol=AAPL&depth=20
 | **v1.1.0** | **gRPC Client Pool & Multiplexing** | Replace HTTP/1.1 downstream clients with persistent HTTP/2 gRPC connection pools. Keep-alive tuning to eliminate TCP connection churn. |
 | **v1.2.0** | **High-Fanout WebSocket Engine** | Replace standard `net/http` WebSocket with `gobwas/ws` or `epoll`/`kqueue` event-loop architecture to sustain **100,000+ concurrent live priceboard connections** with minimal memory (< 2KB per connection). |
 | **v2.0.0** | **Kernel-Bypass / eBPF Gateway** | Offload DDoS mitigation and token-bucket rate limiting to eBPF / XDP at the Linux kernel level. Target ingress latency overhead < 50 microseconds. |
+
