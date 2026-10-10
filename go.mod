@@ -1,4 +1,4 @@
-module github.com/exchange/trading-system/services/api-gateway
+module github.com/nguyen-anh-hao/api-gateway
 
 go 1.25.0
 
