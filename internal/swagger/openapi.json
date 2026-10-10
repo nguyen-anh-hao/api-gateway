@@ -1,0 +1,524 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Trading System API Gateway",
+    "description": "REST API của sàn giao dịch — đủ 5 nhóm nghiệp vụ: Treasury & Account, Order Execution, Market Data, Portfolio & PnL, Incentives & Fees.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "http://localhost:8080", "description": "Local gateway" }
+  ],
+  "security": [
+    { "ApiKeyAuth": [] }
+  ],
+  "tags": [
+    { "name": "Treasury & Account" },
+    { "name": "Order Execution" },
+    { "name": "Market Data" },
+    { "name": "Portfolio & PnL" },
+    { "name": "Incentives & Fees" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      }
+    },
+    "schemas": {
+      "OrderRequest": {
+        "type": "object",
+        "required": ["symbol", "side", "type", "quantity"],
+        "properties": {
+          "symbol": { "type": "string", "example": "AAPL" },
+          "side": { "type": "string", "enum": ["BUY", "SELL"] },
+          "type": { "type": "string", "enum": ["LIMIT", "MARKET"] },
+          "price": { "type": "string", "example": "100.5" },
+          "quantity": { "type": "string", "example": "10" },
+          "time_in_force": { "type": "string", "enum": ["GTC", "IOC", "FOK"] },
+          "client_order_id": { "type": "string" }
+        }
+      },
+      "Trade": {
+        "type": "object",
+        "properties": {
+          "trade_id": { "type": "integer" },
+          "symbol": { "type": "string" },
+          "price": { "type": "string" },
+          "quantity": { "type": "string" },
+          "maker_order_id": { "type": "integer" },
+          "taker_order_id": { "type": "integer" },
+          "maker_account_id": { "type": "integer" },
+          "taker_account_id": { "type": "integer" }
+        }
+      },
+      "OrderResponse": {
+        "type": "object",
+        "properties": {
+          "accepted": { "type": "boolean" },
+          "order_id": { "type": "integer" },
+          "status": { "type": "string" },
+          "reject_reason": { "type": "string" },
+          "trades": { "type": "array", "items": { "$ref": "#/components/schemas/Trade" } }
+        }
+      },
+      "Ticker": {
+        "type": "object",
+        "properties": {
+          "symbol": { "type": "string" },
+          "last_price": { "type": "string" },
+          "best_bid": { "type": "string" },
+          "best_ask": { "type": "string" }
+        }
+      },
+      "Balance": {
+        "type": "object",
+        "properties": {
+          "asset": { "type": "string" },
+          "total": { "type": "string" },
+          "available": { "type": "string" },
+          "frozen": { "type": "string" }
+        }
+      },
+      "LedgerEntry": {
+        "type": "object",
+        "properties": {
+          "entry_id": { "type": "integer" },
+          "asset": { "type": "string" },
+          "debit": { "type": "string" },
+          "credit": { "type": "string" },
+          "reference": { "type": "string" },
+          "reason": { "type": "string" },
+          "timestamp_ns": { "type": "integer" }
+        }
+      },
+      "OrderView": {
+        "type": "object",
+        "properties": {
+          "order_id": { "type": "integer" },
+          "symbol": { "type": "string" },
+          "side": { "type": "string" },
+          "type": { "type": "string" },
+          "price": { "type": "string" },
+          "quantity": { "type": "string" },
+          "executed_quantity": { "type": "string" },
+          "leaves_quantity": { "type": "string" },
+          "status": { "type": "string" },
+          "timestamp_ns": { "type": "integer" }
+        }
+      },
+      "Position": {
+        "type": "object",
+        "properties": {
+          "symbol": { "type": "string" },
+          "available_quantity": { "type": "string" },
+          "pending_quantity": { "type": "string" },
+          "average_cost": { "type": "string" },
+          "market_price": { "type": "string" },
+          "unrealized_pnl": { "type": "string" }
+        }
+      },
+      "PnL": {
+        "type": "object",
+        "properties": {
+          "realized_pnl": { "type": "string" },
+          "unrealized_pnl": { "type": "string" }
+        }
+      },
+      "FeeTier": {
+        "type": "object",
+        "properties": {
+          "volume_30d": { "type": "string" },
+          "current_tier": { "type": "string" },
+          "maker_fee": { "type": "string" },
+          "taker_fee": { "type": "string" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/accounts": {
+      "post": {
+        "tags": ["Treasury & Account"],
+        "summary": "Tạo tài khoản mới",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "email": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "account_id của tài khoản vừa tạo",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "account_id": { "type": "integer" } } } } }
+          }
+        }
+      }
+    },
+    "/accounts/api-keys": {
+      "post": {
+        "tags": ["Treasury & Account"],
+        "summary": "Sinh API key/secret cho một account",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "account_id": { "type": "integer" },
+                  "permissions": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "api_key + secret_key",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "account_id": { "type": "integer" }, "api_key": { "type": "string" }, "secret_key": { "type": "string" } } } } }
+          }
+        }
+      }
+    },
+    "/deposit": {
+      "post": {
+        "tags": ["Treasury & Account"],
+        "summary": "Nạp tiền/chứng khoán ảo (faucet)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["asset", "amount"],
+                "properties": {
+                  "asset": { "type": "string", "example": "CASH" },
+                  "amount": { "type": "string", "example": "1000000" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "success" } }
+      }
+    },
+    "/withdraw": {
+      "post": {
+        "tags": ["Treasury & Account"],
+        "summary": "Rút tiền/chứng khoán",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["asset", "amount"],
+                "properties": {
+                  "asset": { "type": "string" },
+                  "amount": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "success" } }
+      }
+    },
+    "/balances": {
+      "get": {
+        "tags": ["Treasury & Account"],
+        "summary": "Truy vấn số dư",
+        "responses": {
+          "200": {
+            "description": "danh sách số dư",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "balances": { "type": "array", "items": { "$ref": "#/components/schemas/Balance" } } } } } }
+          }
+        }
+      }
+    },
+    "/ledger": {
+      "get": {
+        "tags": ["Treasury & Account"],
+        "summary": "Sao kê bút toán",
+        "parameters": [
+          { "name": "start_time", "in": "query", "schema": { "type": "integer" } },
+          { "name": "end_time", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "danh sách bút toán",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "entries": { "type": "array", "items": { "$ref": "#/components/schemas/LedgerEntry" } } } } } }
+          }
+        }
+      }
+    },
+    "/orders": {
+      "post": {
+        "tags": ["Order Execution"],
+        "summary": "Đặt lệnh mới",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrderRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "kết quả đặt lệnh",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrderResponse" } } }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Order Execution"],
+        "summary": "Hủy lệnh",
+        "parameters": [
+          { "name": "id", "in": "query", "required": true, "schema": { "type": "integer" } },
+          { "name": "symbol", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "success" } }
+      }
+    },
+    "/orders/bulk-cancel": {
+      "post": {
+        "tags": ["Order Execution"],
+        "summary": "Hủy lệnh hàng loạt",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "symbol": { "type": "string" },
+                  "side": { "type": "string", "enum": ["BUY", "SELL"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "cancelled_count" } }
+      }
+    },
+    "/orders/modify": {
+      "post": {
+        "tags": ["Order Execution"],
+        "summary": "Sửa lệnh (atomic cancel-and-replace)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["order_id"],
+                "properties": {
+                  "order_id": { "type": "integer" },
+                  "new_price": { "type": "string" },
+                  "new_quantity": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "success + new_order_id" } }
+      }
+    },
+    "/orders/open": {
+      "get": {
+        "tags": ["Order Execution"],
+        "summary": "Lệnh đang mở",
+        "parameters": [ { "name": "symbol", "in": "query", "schema": { "type": "string" } } ],
+        "responses": {
+          "200": {
+            "description": "danh sách lệnh mở",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "orders": { "type": "array", "items": { "$ref": "#/components/schemas/OrderView" } } } } } }
+          }
+        }
+      }
+    },
+    "/orders/history": {
+      "get": {
+        "tags": ["Order Execution"],
+        "summary": "Lịch sử lệnh",
+        "parameters": [
+          { "name": "symbol", "in": "query", "schema": { "type": "string" } },
+          { "name": "status", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "danh sách lệnh đã kết thúc",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "orders": { "type": "array", "items": { "$ref": "#/components/schemas/OrderView" } } } } } }
+          }
+        }
+      }
+    },
+    "/trades": {
+      "get": {
+        "tags": ["Order Execution"],
+        "summary": "Lịch sử khớp lệnh của tài khoản",
+        "parameters": [
+          { "name": "symbol", "in": "query", "schema": { "type": "string" } },
+          { "name": "order_id", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "danh sách trade",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "trades": { "type": "array", "items": { "$ref": "#/components/schemas/Trade" } } } } } }
+          }
+        }
+      }
+    },
+    "/ticker": {
+      "get": {
+        "tags": ["Market Data"],
+        "summary": "Giá khớp gần nhất",
+        "parameters": [ { "name": "symbol", "in": "query", "required": true, "schema": { "type": "string" } } ],
+        "responses": {
+          "200": {
+            "description": "ticker",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "ticker": { "$ref": "#/components/schemas/Ticker" } } } } }
+          }
+        }
+      }
+    },
+    "/book": {
+      "get": {
+        "tags": ["Market Data"],
+        "summary": "Sổ lệnh theo độ sâu (L2)",
+        "parameters": [
+          { "name": "symbol", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "depth", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "bids/asks",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "symbol": { "type": "string" }, "bids": { "type": "array", "items": { "type": "array", "items": { "type": "string" } } }, "asks": { "type": "array", "items": { "type": "array", "items": { "type": "string" } } } } } } }
+          }
+        }
+      }
+    },
+    "/trades-tape": {
+      "get": {
+        "tags": ["Market Data"],
+        "summary": "Dòng lệnh khớp công khai (ẩn danh)",
+        "parameters": [ { "name": "symbol", "in": "query", "schema": { "type": "string" } } ],
+        "responses": {
+          "200": {
+            "description": "danh sách trade",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "trades": { "type": "array", "items": { "$ref": "#/components/schemas/Trade" } } } } } }
+          }
+        }
+      }
+    },
+    "/ohlcv": {
+      "get": {
+        "tags": ["Market Data"],
+        "summary": "Dữ liệu nến OHLCV",
+        "parameters": [
+          { "name": "symbol", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "interval", "in": "query", "schema": { "type": "string", "example": "1m" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "danh sách nến",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "candles": { "type": "array", "items": { "type": "object" } } } } } }
+          }
+        }
+      }
+    },
+    "/positions": {
+      "get": {
+        "tags": ["Portfolio & PnL"],
+        "summary": "Danh mục cổ phiếu",
+        "responses": {
+          "200": {
+            "description": "danh sách vị thế",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "positions": { "type": "array", "items": { "$ref": "#/components/schemas/Position" } } } } } }
+          }
+        }
+      }
+    },
+    "/pnl": {
+      "get": {
+        "tags": ["Portfolio & PnL"],
+        "summary": "Lời/lỗ (realized + unrealized)",
+        "responses": {
+          "200": {
+            "description": "PnL",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PnL" } } }
+          }
+        }
+      }
+    },
+    "/buying-power": {
+      "get": {
+        "tags": ["Portfolio & PnL"],
+        "summary": "Sức mua",
+        "responses": {
+          "200": {
+            "description": "buying power",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "cash_balance": { "type": "number" }, "buying_power": { "type": "number" }, "margin_ratio": { "type": "number" } } } } }
+          }
+        }
+      }
+    },
+    "/fee-tiers": {
+      "get": {
+        "tags": ["Incentives & Fees"],
+        "summary": "Cấp bậc phí",
+        "responses": {
+          "200": {
+            "description": "fee tier",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FeeTier" } } }
+          }
+        }
+      }
+    },
+    "/leaderboard": {
+      "get": {
+        "tags": ["Incentives & Fees"],
+        "summary": "Bảng xếp hạng giao dịch",
+        "responses": {
+          "200": {
+            "description": "danh sách xếp hạng",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "entries": { "type": "array", "items": { "type": "object" } } } } } }
+          }
+        }
+      }
+    },
+    "/redeem-voucher": {
+      "post": {
+        "tags": ["Incentives & Fees"],
+        "summary": "Kích hoạt mã quà tặng",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["voucher_code"],
+                "properties": { "voucher_code": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "success + credited_amount" } }
+      }
+    }
+  }
+}
