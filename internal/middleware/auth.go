@@ -8,7 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"sync"
@@ -48,7 +48,7 @@ func NewAuthManager(rdb *redis.Client) *AuthManager {
 				m.keys[k] = v
 			}
 		} else {
-			log.Printf("[auth] failed to parse GATEWAY_API_KEYS: %v", err)
+			slog.Warn("failed to parse GATEWAY_API_KEYS", "err", err)
 		}
 	}
 	return m

@@ -2,7 +2,7 @@ package handler
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 )
 
@@ -44,7 +44,7 @@ func (h *Handler) RedeemVoucher(w http.ResponseWriter, r *http.Request) {
 	if resp.Success {
 		if amount, ok := parseMoney(resp.CreditedAmount); ok && amount > 0 {
 			if derr := h.Risk.Deposit(r.Context(), acct, "CASH", resp.CreditedAmount); derr != nil {
-				log.Printf("[voucher] risk deposit failed for account %d: %v", acct, derr)
+				slog.ErrorContext(r.Context(), "voucher risk deposit failed", "account_id", acct, "err", derr)
 			}
 			_ = h.Settlement.Deposit(r.Context(), acct, "CASH", resp.CreditedAmount)
 		}

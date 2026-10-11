@@ -3,7 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -114,7 +114,7 @@ func (h *Handler) PlaceOrder(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		_ = h.Risk.Release(r.Context(), ckReq)
-		log.Printf("[order] matching engine error: %v", err)
+		slog.ErrorContext(r.Context(), "matching engine error", "err", err)
 		writeErr(w, http.StatusBadGateway, "matching engine unavailable")
 		return
 	}
@@ -126,7 +126,7 @@ func (h *Handler) PlaceOrder(w http.ResponseWriter, r *http.Request) {
 
 	// 4. Settle each fill: consume frozen funds (risk) + double-entry (settlement).
 	if err := h.settleTrades(r.Context(), resp.Trades, req.Side, refPrice, rates.taker); err != nil {
-		log.Printf("[order] settlement failed for order %d: %v", resp.OrderID, err)
+		slog.ErrorContext(r.Context(), "settlement failed", "order_id", resp.OrderID, "err", err)
 	}
 
 	// 5. Track remaining frozen for a resting order so cancel can release it.
@@ -331,7 +331,7 @@ func (h *Handler) ModifyOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.settleTrades(r.Context(), resp.Trades, old.Side, price, rates.taker); err != nil {
-		log.Printf("[order] modify settlement failed for order %d: %v", resp.OrderID, err)
+		slog.ErrorContext(r.Context(), "modify settlement failed", "order_id", resp.OrderID, "err", err)
 	}
 
 	if resp.Status == "NEW" || resp.Status == "PARTIALLY_FILLED" {

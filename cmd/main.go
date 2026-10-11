@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -47,10 +47,18 @@ func main() {
 	auth := middleware.NewAuthManager(rdb)
 	h := handler.New(engine, risk, settlement, promotion, auth)
 
-	// Initialize OpenTelemetry tracing (OTLP -> collector -> Jaeger).
+	// 1. Initialize structured logging first (slog -> OTLP gRPC -> Loki, plus JSON stdout).
+	logShutdown, err := telemetry.InitLogging(env("OTEL_SERVICE_NAME", "api-gateway"), env("OTEL_EXPORTER_OTLP_ENDPOINT", ""))
+	if err != nil {
+		slog.Warn("OTLP logging disabled", "err", err)
+		logShutdown = func(context.Context) error { return nil }
+	}
+	defer func() { _ = logShutdown(context.Background()) }()
+
+	// 2. Initialize OpenTelemetry tracing (OTLP -> collector -> Jaeger).
 	tpShutdown, err := telemetry.Init(env("OTEL_SERVICE_NAME", "api-gateway"), env("OTEL_EXPORTER_OTLP_ENDPOINT", ""))
 	if err != nil {
-		log.Printf("[api-gateway] tracing disabled: %v", err)
+		slog.Warn("tracing disabled", "err", err)
 		tpShutdown = func(context.Context) error { return nil }
 	}
 	defer func() { _ = tpShutdown(context.Background()) }()
@@ -113,6 +121,9 @@ func main() {
 	root.Handle("/", protected)
 
 	addr := ":" + env("API_GATEWAY_PORT", "8080")
-	log.Printf("[api-gateway] listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, root))
+	slog.Info("api-gateway listening", "addr", addr)
+	if err := http.ListenAndServe(addr, root); err != nil {
+		slog.Error("server stopped", "err", err)
+		os.Exit(1)
+	}
 }

@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strconv"
@@ -12,7 +12,7 @@ func (h *Handler) GetTicker(w http.ResponseWriter, r *http.Request) {
 	symbol := r.URL.Query().Get("symbol")
 	t, err := h.Engine.Ticker(r.Context(), symbol)
 	if err != nil {
-		log.Printf("[market-data] ticker engine error: %v", err)
+		slog.ErrorContext(r.Context(), "ticker engine error", "symbol", symbol, "err", err)
 		writeErr(w, http.StatusBadGateway, "matching engine unavailable")
 		return
 	}
@@ -25,7 +25,7 @@ func (h *Handler) GetOrderBook(w http.ResponseWriter, r *http.Request) {
 	depth, _ := strconv.ParseUint(r.URL.Query().Get("depth"), 10, 32)
 	book, err := h.Engine.OrderBook(r.Context(), symbol, uint32(depth))
 	if err != nil {
-		log.Printf("[market-data] book engine error: %v", err)
+		slog.ErrorContext(r.Context(), "book engine error", "symbol", symbol, "err", err)
 		writeErr(w, http.StatusBadGateway, "matching engine unavailable")
 		return
 	}

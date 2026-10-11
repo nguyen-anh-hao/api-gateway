@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"bufio"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"strconv"
@@ -41,8 +41,13 @@ func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return r.ResponseWriter.(http.Hijacker).Hijack()
 }
 
-// Logging logs method, path, status code and latency for every request, and
-// records Prometheus metrics.
+// slowRequestThreshold is the latency above which a successful request is
+// logged at warn level instead of the quieter debug level.
+const slowRequestThreshold = 1 * time.Second
+
+// Logging logs method, path, status code and latency, and records Prometheus
+// metrics. To keep the gateway quiet in production, successful/fast requests are
+// logged at debug, while failures (4xx/5xx) and slow requests are logged at warn.
 func Logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -52,6 +57,18 @@ func Logging(next http.Handler) http.Handler {
 
 		httpRequestsTotal.Inc(r.Method, r.URL.Path, strconv.Itoa(rec.status))
 		httpRequestDuration.Observe(elapsed.Seconds(), r.Method, r.URL.Path)
-		log.Printf("%s %s -> %d (%s)", r.Method, r.URL.Path, rec.status, elapsed)
+
+		// Put the essential request info in the message so Grafana/Loki's default
+		// view is readable at a glance; keep structured fields for filtering.
+		msg := r.Method + " " + r.URL.Path + " -> " + strconv.Itoa(rec.status)
+		fields := []any{"method", r.Method, "path", r.URL.Path, "status", rec.status, "duration_ms", elapsed.Milliseconds()}
+		switch {
+		case rec.status >= http.StatusBadRequest:
+			slog.WarnContext(r.Context(), msg, fields...)
+		case elapsed >= slowRequestThreshold:
+			slog.WarnContext(r.Context(), msg, fields...)
+		default:
+			slog.DebugContext(r.Context(), msg, fields...)
+		}
 	})
 }
