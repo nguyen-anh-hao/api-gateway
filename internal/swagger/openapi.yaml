@@ -1,0 +1,701 @@
+openapi: 3.0.3
+info:
+  title: Trading System API Gateway
+  description: >-
+    Public REST API of the trading exchange, covering the 5 business groups:
+    Treasury & Account, Order Execution, Market Data, Portfolio & PnL, Incentives
+    & Fees. This file is the single source of truth; Swagger UI, Go types and
+    HTTP examples are generated from it.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+security:
+  - ApiKeyAuth: []
+tags:
+  - name: Treasury & Account
+  - name: Order Execution
+  - name: Market Data
+  - name: Portfolio & PnL
+  - name: Incentives & Fees
+paths:
+  # ---------------------------------------------------------------------------
+  # 1. Treasury & Account
+  # ---------------------------------------------------------------------------
+  /accounts:
+    post:
+      tags: [Treasury & Account]
+      summary: Create a new account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAccountRequest'
+      responses:
+        '200':
+          description: Account created with API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountCreated'
+
+  /accounts/api-keys:
+    post:
+      tags: [Treasury & Account]
+      summary: Generate an API key for an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiKeyRequest'
+      responses:
+        '200':
+          description: API key generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountCreated'
+
+  /deposit:
+    post:
+      tags: [Treasury & Account]
+      summary: Deposit cash or virtual stock (requires "trade" permission)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DepositRequest'
+      responses:
+        '200':
+          description: Deposit succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /withdraw:
+    post:
+      tags: [Treasury & Account]
+      summary: Withdraw cash or virtual stock (requires "withdraw" permission)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DepositRequest'
+      responses:
+        '200':
+          description: Withdrawal succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /balances:
+    get:
+      tags: [Treasury & Account]
+      summary: Read account balances
+      responses:
+        '200':
+          description: Account balances
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalancesResponse'
+
+  /ledger:
+    get:
+      tags: [Treasury & Account]
+      summary: Read account ledger entries
+      responses:
+        '200':
+          description: Ledger entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LedgerResponse'
+  # ---------------------------------------------------------------------------
+  # 2. Order Execution
+  # ---------------------------------------------------------------------------
+  /orders:
+    post:
+      tags: [Order Execution]
+      summary: Place an order (requires "trade" permission)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceOrderRequest'
+      responses:
+        '200':
+          description: Order acceptance result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+    delete:
+      tags: [Order Execution]
+      summary: Cancel an order (requires "trade" permission)
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema: { type: integer, format: int64 }
+        - name: symbol
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Cancel result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /orders/bulk-cancel:
+    post:
+      tags: [Order Execution]
+      summary: Cancel all open orders matching filters (requires "trade" permission)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkCancelRequest'
+      responses:
+        '200':
+          description: Number of cancelled orders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkCancelResponse'
+
+  /orders/modify:
+    post:
+      tags: [Order Execution]
+      summary: Modify an order (atomic cancel-and-replace; requires "trade" permission)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModifyOrderRequest'
+      responses:
+        '200':
+          description: Modify result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModifyOrderResponse'
+
+  /orders/open:
+    get:
+      tags: [Order Execution]
+      summary: List open orders
+      parameters:
+        - name: symbol
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Open orders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdersResponse'
+
+  /orders/history:
+    get:
+      tags: [Order Execution]
+      summary: List historical (terminal) orders
+      parameters:
+        - name: symbol
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Historical orders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdersResponse'
+
+  /trades:
+    get:
+      tags: [Order Execution]
+      summary: List executed trades for the account
+      parameters:
+        - name: symbol
+          in: query
+          schema: { type: string }
+        - name: order_id
+          in: query
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Trades
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradesResponse'
+  # ---------------------------------------------------------------------------
+  # 3. Market Data
+  # ---------------------------------------------------------------------------
+  /ticker:
+    get:
+      tags: [Market Data]
+      summary: Get ticker for a symbol
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Ticker
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TickerResponse'
+
+  /book:
+    get:
+      tags: [Market Data]
+      summary: Get L2 order book depth
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          schema: { type: string }
+        - name: depth
+          in: query
+          schema: { type: integer, format: int32 }
+      responses:
+        '200':
+          description: Order book snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderBookResponse'
+
+  /trades-tape:
+    get:
+      tags: [Market Data]
+      summary: Get public (anonymized) recent trade tape
+      parameters:
+        - name: symbol
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Trade tape
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradesResponse'
+
+  /ohlcv:
+    get:
+      tags: [Market Data]
+      summary: Get OHLCV candles
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          schema: { type: string }
+        - name: interval
+          in: query
+          schema: { type: string, default: 1m }
+        - name: limit
+          in: query
+          schema: { type: integer, format: int32 }
+      responses:
+        '200':
+          description: Candles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OHLCVResponse'
+
+  # ---------------------------------------------------------------------------
+  # 4. Portfolio & PnL
+  # ---------------------------------------------------------------------------
+  /positions:
+    get:
+      tags: [Portfolio & PnL]
+      summary: List positions
+      responses:
+        '200':
+          description: Positions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PositionsResponse'
+
+  /pnl:
+    get:
+      tags: [Portfolio & PnL]
+      summary: Get realized + unrealized PnL
+      responses:
+        '200':
+          description: PnL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PnLResponse'
+
+  /buying-power:
+    get:
+      tags: [Portfolio & PnL]
+      summary: Get buying power
+      responses:
+        '200':
+          description: Buying power
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuyingPowerResponse'
+
+  # ---------------------------------------------------------------------------
+  # 5. Incentives & Fees
+  # ---------------------------------------------------------------------------
+  /fee-tiers:
+    get:
+      tags: [Incentives & Fees]
+      summary: Get the account's fee tier
+      responses:
+        '200':
+          description: Fee tier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeeTier'
+
+  /leaderboard:
+    get:
+      tags: [Incentives & Fees]
+      summary: Get the leaderboard
+      responses:
+        '200':
+          description: Leaderboard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaderboardResponse'
+
+  /redeem-voucher:
+    post:
+      tags: [Incentives & Fees]
+      summary: Redeem a cash voucher
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RedeemVoucherRequest'
+      responses:
+        '200':
+          description: Redemption result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RedeemVoucherResponse'
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    CreateAccountRequest:
+      type: object
+      properties:
+        name: { type: string }
+        email: { type: string }
+
+    CreateApiKeyRequest:
+      type: object
+      properties:
+        account_id: { type: integer, format: int64 }
+        permissions:
+          type: array
+          items: { type: string }
+
+    AccountCreated:
+      type: object
+      properties:
+        account_id: { type: integer, format: int64 }
+        api_key: { type: string }
+        secret_key: { type: string }
+        permissions:
+          type: array
+          items: { type: string }
+
+    DepositRequest:
+      type: object
+      properties:
+        asset: { type: string }
+        amount: { type: string }
+
+    SuccessResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+
+    Balance:
+      type: object
+      properties:
+        asset: { type: string }
+        total: { type: string }
+        available: { type: string }
+        frozen: { type: string }
+
+    BalancesResponse:
+      type: object
+      properties:
+        balances:
+          type: array
+          items: { $ref: '#/components/schemas/Balance' }
+
+    LedgerEntry:
+      type: object
+      properties:
+        entry_id: { type: integer, format: int64 }
+        asset: { type: string }
+        debit: { type: string }
+        credit: { type: string }
+        reference: { type: string }
+        reason: { type: string }
+        timestamp_ns: { type: integer, format: int64 }
+
+    LedgerResponse:
+      type: object
+      properties:
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/LedgerEntry' }
+
+    PlaceOrderRequest:
+      type: object
+      required: [symbol, side, type, quantity]
+      properties:
+        symbol: { type: string }
+        side: { type: string, default: BUY }
+        type: { type: string, default: LIMIT }
+        price: { type: string }
+        quantity: { type: string }
+        time_in_force: { type: string, default: GTC }
+        client_order_id: { type: string }
+
+    Trade:
+      type: object
+      properties:
+        trade_id: { type: integer, format: int64 }
+        symbol: { type: string }
+        price: { type: string }
+        quantity: { type: string }
+        maker_order_id: { type: integer, format: int64 }
+        taker_order_id: { type: integer, format: int64 }
+        maker_account_id: { type: integer, format: int64 }
+        taker_account_id: { type: integer, format: int64 }
+
+    OrderResponse:
+      type: object
+      properties:
+        accepted: { type: boolean }
+        order_id: { type: integer, format: int64 }
+        status: { type: string }
+        reject_reason: { type: string }
+        trades:
+          type: array
+          items: { $ref: '#/components/schemas/Trade' }
+
+    BulkCancelRequest:
+      type: object
+      properties:
+        symbol: { type: string }
+        side: { type: string }
+
+    BulkCancelResponse:
+      type: object
+      properties:
+        cancelled_count: { type: integer }
+
+    ModifyOrderRequest:
+      type: object
+      required: [order_id]
+      properties:
+        order_id: { type: integer, format: int64 }
+        new_price: { type: string }
+        new_quantity: { type: string }
+
+    ModifyOrderResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        new_order_id: { type: integer, format: int64 }
+    OrderView:
+      type: object
+      properties:
+        order_id: { type: integer, format: int64 }
+        symbol: { type: string }
+        side: { type: string }
+        type: { type: string }
+        price: { type: string }
+        quantity: { type: string }
+        executed_quantity: { type: string }
+        leaves_quantity: { type: string }
+        status: { type: string }
+        timestamp_ns: { type: integer, format: int64 }
+
+    OrdersResponse:
+      type: object
+      properties:
+        orders:
+          type: array
+          items: { $ref: '#/components/schemas/OrderView' }
+
+    TradeView:
+      type: object
+      properties:
+        trade_id: { type: integer, format: int64 }
+        order_id: { type: integer, format: int64 }
+        symbol: { type: string }
+        price: { type: string }
+        quantity: { type: string }
+        fee: { type: string }
+        role: { type: string }
+        timestamp_ns: { type: integer, format: int64 }
+
+    TradesResponse:
+      type: object
+      properties:
+        trades:
+          type: array
+          items: { $ref: '#/components/schemas/TradeView' }
+
+    Ticker:
+      type: object
+      properties:
+        symbol: { type: string }
+        last_price: { type: string }
+        best_bid: { type: string }
+        best_ask: { type: string }
+
+    TickerResponse:
+      type: object
+      properties:
+        ticker: { $ref: '#/components/schemas/Ticker' }
+
+    OrderBookResponse:
+      type: object
+      properties:
+        symbol: { type: string }
+        bids:
+          type: array
+          items:
+            type: array
+            items: { type: string }
+        asks:
+          type: array
+          items:
+            type: array
+            items: { type: string }
+
+    Candle:
+      type: object
+      properties:
+        timestamp: { type: integer, format: int64 }
+        open: { type: number }
+        high: { type: number }
+        low: { type: number }
+        close: { type: number }
+        volume: { type: number }
+
+    OHLCVResponse:
+      type: object
+      properties:
+        candles:
+          type: array
+          items: { $ref: '#/components/schemas/Candle' }
+
+    Position:
+      type: object
+      properties:
+        symbol: { type: string }
+        available_quantity: { type: string }
+        pending_quantity: { type: string }
+        average_cost: { type: string }
+        market_price: { type: string }
+        unrealized_pnl: { type: string }
+
+    PositionsResponse:
+      type: object
+      properties:
+        positions:
+          type: array
+          items: { $ref: '#/components/schemas/Position' }
+
+    PnLResponse:
+      type: object
+      properties:
+        realized_pnl: { type: string }
+        unrealized_pnl: { type: string }
+
+    BuyingPowerResponse:
+      type: object
+      properties:
+        cash_balance: { type: number }
+        margin: { type: number }
+        buying_power: { type: number }
+        margin_ratio: { type: number }
+
+    FeeTier:
+      type: object
+      properties:
+        volume_30d: { type: string }
+        current_tier: { type: string }
+        maker_fee: { type: string }
+        taker_fee: { type: string }
+
+    LeaderboardEntry:
+      type: object
+      properties:
+        account_id: { type: integer, format: int64 }
+        name: { type: string }
+        roi: { type: string }
+        volume: { type: string }
+        rank: { type: integer }
+
+    LeaderboardResponse:
+      type: object
+      properties:
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/LeaderboardEntry' }
+
+    RedeemVoucherRequest:
+      type: object
+      properties:
+        voucher_code: { type: string }
+
+    RedeemVoucherResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        reason: { type: string }
+        credited_amount: { type: string }
+
+    ErrorResponse:
+      type: object
+      properties:
+        error: { type: string }

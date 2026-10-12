@@ -1,6 +1,6 @@
 // Package swagger serves the OpenAPI spec and a Swagger UI page for the API
-// gateway. The spec is embedded from openapi.json and the UI is loaded from a
-// CDN (no extra Go dependencies).
+// gateway. The spec is embedded from openapi.yaml (the single source of truth
+// for the whole API surface) and the UI is loaded from a CDN.
 package swagger
 
 import (
@@ -8,7 +8,7 @@ import (
 	"net/http"
 )
 
-//go:embed openapi.json
+//go:embed openapi.yaml
 var spec []byte
 
 const uiHTML = `<!DOCTYPE html>
@@ -25,7 +25,7 @@ const uiHTML = `<!DOCTYPE html>
     <script>
       window.onload = function () {
         SwaggerUIBundle({
-          url: "/swagger/doc.json",
+          url: "/swagger/doc.yaml",
           dom_id: "#swagger-ui",
           deepLinking: true,
           presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
@@ -42,8 +42,8 @@ func Register(mux *http.ServeMux) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(uiHTML))
 	})
-	mux.HandleFunc("GET /swagger/doc.json", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+	mux.HandleFunc("GET /swagger/doc.yaml", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/yaml")
 		_, _ = w.Write(spec)
 	})
 }

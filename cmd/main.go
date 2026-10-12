@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/nguyen-anh-hao/api-gateway/internal/client"
+	"github.com/nguyen-anh-hao/api-gateway/internal/eventbus"
 	"github.com/nguyen-anh-hao/api-gateway/internal/handler"
 	"github.com/nguyen-anh-hao/api-gateway/internal/metrics"
 	"github.com/nguyen-anh-hao/api-gateway/internal/middleware"
@@ -45,7 +46,9 @@ func main() {
 
 	rdb := storage.NewRedisClient()
 	auth := middleware.NewAuthManager(rdb)
-	h := handler.New(engine, risk, settlement, promotion, auth)
+	publisher := eventbus.NewPublisher(env("NATS_ADDR", ""))
+	marketdata := client.NewMarketDataClient(env("MARKET_DATA_ADDR", "localhost:8085"))
+	h := handler.New(engine, risk, settlement, promotion, marketdata, publisher, auth)
 
 	// 1. Initialize structured logging first (slog -> OTLP gRPC -> Loki, plus JSON stdout).
 	logShutdown, err := telemetry.InitLogging(env("OTEL_SERVICE_NAME", "api-gateway"), env("OTEL_EXPORTER_OTLP_ENDPOINT", ""))
@@ -86,7 +89,6 @@ func main() {
 	mux.HandleFunc("GET /book", h.GetOrderBook)
 	mux.HandleFunc("GET /trades-tape", h.GetTradesTape)
 	mux.HandleFunc("GET /ohlcv", h.GetOHLCV)
-	mux.HandleFunc("GET /ws", h.WSMarketData)
 
 	// 4. Portfolio & PnL
 	mux.HandleFunc("GET /positions", h.GetPositions)

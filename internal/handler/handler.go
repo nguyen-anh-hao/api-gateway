@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nguyen-anh-hao/api-gateway/internal/client"
+	"github.com/nguyen-anh-hao/api-gateway/internal/eventbus"
 	"github.com/nguyen-anh-hao/api-gateway/internal/metrics"
 	"github.com/nguyen-anh-hao/api-gateway/internal/middleware"
 )
@@ -73,25 +74,28 @@ type Handler struct {
 	Risk       *client.RiskClient
 	Settlement *client.SettlementClient
 	Promotion  *client.PromotionClient
+	MarketData *client.MarketDataClient
 	Auth       *middleware.AuthManager
+	Publisher  *eventbus.Publisher
 
 	mu     sync.RWMutex
 	orders map[uint64]map[uint64]*OrderView // accountID -> orderID -> order
 	trades map[uint64][]TradeView           // accountID -> trades
-	tape   []TradeView                      // public anonymized tape (all symbols)
 
 	reserved map[uint64]reservedAmt  // orderID -> frozen amount (open resting orders)
 	feeMu    sync.Mutex
 	feeCache map[uint64]feeRates // accountID -> maker/taker fee rates
 }
 
-func New(e *client.EngineClient, r *client.RiskClient, s *client.SettlementClient, p *client.PromotionClient, auth *middleware.AuthManager) *Handler {
+func New(e *client.EngineClient, r *client.RiskClient, s *client.SettlementClient, p *client.PromotionClient, md *client.MarketDataClient, pub *eventbus.Publisher, auth *middleware.AuthManager) *Handler {
 	return &Handler{
 		Engine:     e,
 		Risk:       r,
 		Settlement: s,
 		Promotion:  p,
+		MarketData: md,
 		Auth:       auth,
+		Publisher:  pub,
 		orders:     make(map[uint64]map[uint64]*OrderView),
 		trades:     make(map[uint64][]TradeView),
 		reserved:   make(map[uint64]reservedAmt),
@@ -140,10 +144,31 @@ func (h *Handler) recordTrade(t TradeView, makerAccount, takerAccount uint64, ma
 	tm.Role = "MAKER"
 	h.trades[makerAccount] = append(h.trades[makerAccount], tm)
 
-	public := t
-	public.Role = ""
-	h.tape = append(h.tape, public)
 	tradesTotal.Inc(t.Symbol)
+
+	h.publishTrade(t, makerAccount, takerAccount, makerOrder, takerOrder)
+}
+
+// publishTrade emits a market-data event for the fill. Best-effort: if the bus
+// is unavailable or its buffer is full the event is dropped (the durable
+// TimescaleDB path owned by market-data-service is the system of record).
+func (h *Handler) publishTrade(t TradeView, makerAccount, takerAccount uint64, makerOrder, takerOrder uint64) {
+	if h.Publisher == nil {
+		return
+	}
+	h.Publisher.Publish(eventbus.TradeEvent{
+		TradeID:        t.TradeID,
+		Symbol:         t.Symbol,
+		Price:          t.Price,
+		Quantity:       t.Quantity,
+		Fee:            t.Fee,
+		Role:           t.Role,
+		Timestamp:      t.Timestamp,
+		MakerOrderID:   makerOrder,
+		TakerOrderID:   takerOrder,
+		MakerAccountID: makerAccount,
+		TakerAccountID: takerAccount,
+	})
 }
 
 // feeRatesFor returns the (cached) maker and taker fee rates for an account,

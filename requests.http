@@ -15,14 +15,13 @@ Content-Type: application/json
 }
 
 ### Get Live Orderbook Depth
-GET http://localhost:8080/orderbook?symbol=AAPL&depth=20
+GET http://localhost:8080/book?symbol=AAPL&depth=20
 
-### Deposit via Gateway
-POST http://localhost:8080/treasury/deposit
+### Deposit via Gateway (credits the authenticated account; requires "trade" permission)
+POST http://localhost:8080/deposit
 Content-Type: application/json
 
 {
-  "account_id": 1001,
   "asset": "CASH",
   "amount": "10000.00"
 }
