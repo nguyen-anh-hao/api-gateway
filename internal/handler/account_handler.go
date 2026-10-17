@@ -5,12 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
-	"sync/atomic"
 
 	"github.com/nguyen-anh-hao/api-gateway/internal/middleware"
 )
-
-var accountSeq atomic.Uint64
 
 // CreateAccount handles POST /accounts (business group 1: Treasury & Account).
 // It is public (registration) and returns a fresh API key/secret so the new
@@ -21,16 +18,23 @@ func (h *Handler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		Email string `json:"email"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	id := accountSeq.Add(1) + 1000 // start accounts above the seeded demo account
+	id, err := h.Auth.NextAccountID(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusServiceUnavailable, "account store unavailable")
+		return
+	}
 
 	apiKey := randomHex(16)
 	secret := randomHex(32)
 	permissions := []string{"read_only", "trade", "withdraw"}
-	h.Auth.Register(apiKey, middleware.KeyInfo{
+	if err := h.Auth.Register(apiKey, middleware.KeyInfo{
 		AccountID:   id,
 		Secret:      secret,
 		Permissions: permissions,
-	})
+	}); err != nil {
+		writeErr(w, http.StatusServiceUnavailable, "account store unavailable")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"account_id":  id,
@@ -41,31 +45,30 @@ func (h *Handler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 // CreateApiKey handles POST /accounts/api-keys. It generates an API key/secret
-// pair for a target account (defaults to the authenticated account) and
-// registers it into the auth store so the new key can authenticate.
+// pair for the authenticated account only and registers it in the shared store.
 func (h *Handler) CreateApiKey(w http.ResponseWriter, r *http.Request) {
+	acct := accountID(r)
 	var req struct {
-		AccountID   uint64   `json:"account_id"`
 		Permissions []string `json:"permissions"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	if req.AccountID == 0 {
-		req.AccountID = accountID(r)
-	}
 	if len(req.Permissions) == 0 {
 		req.Permissions = []string{"read_only", "trade", "withdraw"}
 	}
 
 	apiKey := randomHex(16)
 	secret := randomHex(32)
-	h.Auth.Register(apiKey, middleware.KeyInfo{
-		AccountID:   req.AccountID,
+	if err := h.Auth.Register(apiKey, middleware.KeyInfo{
+		AccountID:   acct,
 		Secret:      secret,
 		Permissions: req.Permissions,
-	})
+	}); err != nil {
+		writeErr(w, http.StatusServiceUnavailable, "account store unavailable")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"account_id":  req.AccountID,
+		"account_id":  acct,
 		"api_key":     apiKey,
 		"secret_key":  secret,
 		"permissions": req.Permissions,

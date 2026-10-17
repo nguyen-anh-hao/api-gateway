@@ -7,15 +7,32 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
+
+// ErrAuthStoreUnavailable is returned when a mutation needs Redis but it is not
+// configured/reachable. Stateless operation requires shared auth state.
+var ErrAuthStoreUnavailable = errors.New("auth store unavailable")
+
+// nextAccountIDScript reserves a globally unique account id. It starts above the
+// seeded demo accounts so local fixtures never collide with real registrations.
+var nextAccountIDScript = redis.NewScript(`
+local v = redis.call('INCR', KEYS[1])
+if v < 1001 then
+  v = 1001
+  redis.call('SET', KEYS[1], v)
+end
+return v
+`)
 
 // KeyInfo describes an API key and its permissions.
 type KeyInfo struct {
@@ -61,20 +78,35 @@ func SignHMAC(secret, payload string) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-// Register adds (or replaces) an API key at runtime. Used by CreateApiKey so
-// newly-created accounts can authenticate with their own key.
-func (m *AuthManager) Register(apiKey string, info KeyInfo) {
+// Register adds (or replaces) an API key in the shared Redis store. The local
+// map is only a read-through cache; a mutation without Redis is rejected so two
+// gateway replicas can never diverge.
+func (m *AuthManager) Register(apiKey string, info KeyInfo) error {
 	m.mu.Lock()
 	m.keys[apiKey] = info
 	m.mu.Unlock()
 	if m.rdb == nil {
-		return
+		return ErrAuthStoreUnavailable
 	}
-	if b, err := json.Marshal(info); err == nil {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		_ = m.rdb.Set(ctx, "auth:key:"+apiKey, b, 0).Err()
-		cancel()
+	b, err := json.Marshal(info)
+	if err != nil {
+		return err
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	return m.rdb.Set(ctx, "auth:key:"+apiKey, b, 0).Err()
+}
+
+// NextAccountID returns a globally unique account id from Redis.
+func (m *AuthManager) NextAccountID(ctx context.Context) (uint64, error) {
+	if m.rdb == nil {
+		return 0, ErrAuthStoreUnavailable
+	}
+	v, err := nextAccountIDScript.Run(ctx, m.rdb, []string{"auth:account_seq"}).Int64()
+	if err != nil {
+		return 0, err
+	}
+	return uint64(v), nil
 }
 
 // lookup resolves an API key from the local cache, falling back to Redis so
@@ -136,6 +168,9 @@ func (m *AuthManager) Authenticate(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), AccountIDKey{}, info.AccountID)
 		ctx = context.WithValue(ctx, PermissionsKey{}, append([]string(nil), info.Permissions...))
+		// The account identity is forwarded to internal services. They only
+		// trust this header when the request carries the internal token.
+		r.Header.Set("X-Account-ID", strconv.FormatUint(info.AccountID, 10))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

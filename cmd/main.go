@@ -6,12 +6,13 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/nguyen-anh-hao/api-gateway/internal/client"
-	"github.com/nguyen-anh-hao/api-gateway/internal/eventbus"
 	"github.com/nguyen-anh-hao/api-gateway/internal/handler"
 	"github.com/nguyen-anh-hao/api-gateway/internal/metrics"
 	"github.com/nguyen-anh-hao/api-gateway/internal/middleware"
+	"github.com/nguyen-anh-hao/api-gateway/internal/proxy"
 	"github.com/nguyen-anh-hao/api-gateway/internal/storage"
 	"github.com/nguyen-anh-hao/api-gateway/internal/swagger"
 	"github.com/nguyen-anh-hao/api-gateway/internal/telemetry"
@@ -39,16 +40,31 @@ func rateLimitPerSec() float64 {
 }
 
 func main() {
-	engine := client.NewEngineClient(env("MATCHING_ENGINE_ADDR", "localhost:9001"))
 	risk := client.NewRiskClient(env("RISK_ENGINE_ADDR", "localhost:9002"))
 	settlement := client.NewSettlementClient(env("SETTLEMENT_ADDR", "localhost:8083"))
 	promotion := client.NewPromotionClient(env("PROMOTION_ADDR", "localhost:8084"))
+	marketdata := client.NewMarketDataClient(env("MARKET_DATA_ADDR", "localhost:8085"))
 
 	rdb := storage.NewRedisClient()
+	if rdb == nil {
+		slog.Error("REDIS_ADDR is required for stateless api-gateway operation")
+		os.Exit(1)
+	}
+	pingCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	pingErr := rdb.Ping(pingCtx).Err()
+	cancel()
+	if pingErr != nil {
+		slog.Error("redis unavailable; api-gateway requires shared state", "err", pingErr)
+		os.Exit(1)
+	}
 	auth := middleware.NewAuthManager(rdb)
-	publisher := eventbus.NewPublisher(env("NATS_ADDR", ""))
-	marketdata := client.NewMarketDataClient(env("MARKET_DATA_ADDR", "localhost:8085"))
-	h := handler.New(engine, risk, settlement, promotion, marketdata, publisher, auth)
+	h := handler.New(risk, settlement, promotion, marketdata, auth)
+
+	// Thin upstream proxies: order lifecycle/Oms lives in order-service; the
+	// live market-data stream (WebSocket) lives in market-data-service.
+	internalToken := env("INTERNAL_API_TOKEN", "")
+	orderProxy := proxy.New(env("ORDER_SERVICE_ADDR", "localhost:8087"), internalToken)
+	marketStreamProxy := proxy.New(env("MARKET_DATA_ADDR", "localhost:8085"), internalToken)
 
 	// 1. Initialize structured logging first (slog -> OTLP gRPC -> Loki, plus JSON stdout).
 	logShutdown, err := telemetry.InitLogging(env("OTEL_SERVICE_NAME", "api-gateway"), env("OTEL_EXPORTER_OTLP_ENDPOINT", ""))
@@ -75,16 +91,16 @@ func main() {
 	mux.HandleFunc("GET /balances", h.GetBalances)
 	mux.HandleFunc("GET /ledger", h.GetLedger)
 
-	// 2. Order Execution & Lifecycle (writes require the "trade" permission).
-	mux.Handle("POST /orders", middleware.RequirePermission("trade", http.HandlerFunc(h.PlaceOrder)))
-	mux.Handle("DELETE /orders", middleware.RequirePermission("trade", http.HandlerFunc(h.CancelOrder)))
-	mux.Handle("POST /orders/bulk-cancel", middleware.RequirePermission("trade", http.HandlerFunc(h.BulkCancel)))
-	mux.Handle("POST /orders/modify", middleware.RequirePermission("trade", http.HandlerFunc(h.ModifyOrder)))
-	mux.HandleFunc("GET /orders/open", h.GetOpenOrders)
-	mux.HandleFunc("GET /orders/history", h.GetOrderHistory)
-	mux.HandleFunc("GET /trades", h.GetTrades)
+	// 2. Order Execution & Lifecycle (order-service owns the domain logic).
+	mux.Handle("POST /orders", middleware.RequirePermission("trade", orderProxy))
+	mux.Handle("DELETE /orders", middleware.RequirePermission("trade", orderProxy))
+	mux.Handle("POST /orders/bulk-cancel", middleware.RequirePermission("trade", orderProxy))
+	mux.Handle("POST /orders/modify", middleware.RequirePermission("trade", orderProxy))
+	mux.Handle("GET /orders/open", orderProxy)
+	mux.Handle("GET /orders/history", orderProxy)
+	mux.Handle("GET /trades", orderProxy)
 
-	// 3. Market Data
+	// 3. Market Data (HTTP read-through; live stream is /ws below).
 	mux.HandleFunc("GET /ticker", h.GetTicker)
 	mux.HandleFunc("GET /book", h.GetOrderBook)
 	mux.HandleFunc("GET /trades-tape", h.GetTradesTape)
@@ -111,7 +127,8 @@ func main() {
 	protected = middleware.Tracing("api-gateway")(protected)
 	protected = middleware.CORS(protected)
 
-	// /health, /metrics, /swagger and account registration are public.
+	// /health, /metrics, /swagger, account registration and the public
+	// market-data WebSocket stream are outside the authenticated API surface.
 	root := http.NewServeMux()
 	swagger.Register(root)
 	root.HandleFunc("POST /accounts", h.CreateAccount)
@@ -120,6 +137,7 @@ func main() {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 	root.Handle("GET /metrics", metrics.Default.Handler())
+	root.Handle("/ws", marketStreamProxy)
 	root.Handle("/", protected)
 
 	addr := ":" + env("API_GATEWAY_PORT", "8080")

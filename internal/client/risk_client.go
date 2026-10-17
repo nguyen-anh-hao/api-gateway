@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -76,6 +77,10 @@ func (c *RiskClient) do(ctx context.Context, method, path string, payload interf
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusMultipleChoices {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("risk engine: %s: %s", resp.Status, string(b))
+	}
 	if out == nil {
 		return nil
 	}

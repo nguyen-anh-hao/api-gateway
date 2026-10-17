@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -65,17 +66,17 @@ func (c *SettlementClient) Withdraw(ctx context.Context, accountID uint64, asset
 // cash fees charged to each side (maker fee vs taker fee), so the settlement
 // service can book a balanced double-entry journal plus a fee-revenue entry.
 type SettleRequest struct {
-	TradeID        uint64 `json:"trade_id"`
-	Symbol         string `json:"symbol"`
-	Price          string `json:"price"`
-	Quantity       string `json:"quantity"`
-	BuyerFee       string `json:"buyer_fee"`
-	SellerFee      string `json:"seller_fee"`
-	MakerOrderID   uint64 `json:"maker_order_id"`
-	TakerOrderID   uint64 `json:"taker_order_id"`
-	MakerAccountID uint64 `json:"maker_account_id"`
-	TakerAccountID uint64 `json:"taker_account_id"`
-	BuyerAccountID uint64 `json:"buyer_account_id"`
+	TradeID         uint64 `json:"trade_id"`
+	Symbol          string `json:"symbol"`
+	Price           string `json:"price"`
+	Quantity        string `json:"quantity"`
+	BuyerFee        string `json:"buyer_fee"`
+	SellerFee       string `json:"seller_fee"`
+	MakerOrderID    uint64 `json:"maker_order_id"`
+	TakerOrderID    uint64 `json:"taker_order_id"`
+	MakerAccountID  uint64 `json:"maker_account_id"`
+	TakerAccountID  uint64 `json:"taker_account_id"`
+	BuyerAccountID  uint64 `json:"buyer_account_id"`
 	SellerAccountID uint64 `json:"seller_account_id"`
 }
 
@@ -92,6 +93,10 @@ func (c *SettlementClient) Settle(ctx context.Context, req SettleRequest) error 
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusMultipleChoices {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("settlement settle: %s: %s", resp.Status, string(b))
+	}
 	return nil
 }
 
@@ -111,16 +116,20 @@ func (c *SettlementClient) mutation(ctx context.Context, path string, accountID 
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusMultipleChoices {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("settlement mutation: %s: %s", resp.Status, string(b))
+	}
 	return nil
 }
 
 type Position struct {
-	Symbol         string `json:"symbol"`
-	Available      string `json:"available_quantity"`
-	Pending        string `json:"pending_quantity"`
-	AverageCost    string `json:"average_cost"`
-	MarketPrice    string `json:"market_price"`
-	UnrealizedPnL  string `json:"unrealized_pnl"`
+	Symbol        string `json:"symbol"`
+	Available     string `json:"available_quantity"`
+	Pending       string `json:"pending_quantity"`
+	AverageCost   string `json:"average_cost"`
+	MarketPrice   string `json:"market_price"`
+	UnrealizedPnL string `json:"unrealized_pnl"`
 }
 
 func (c *SettlementClient) GetPositions(ctx context.Context, accountID uint64) ([]Position, error) {
