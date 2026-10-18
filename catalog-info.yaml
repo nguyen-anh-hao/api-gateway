@@ -1,0 +1,20 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: api-gateway
+  description: Public edge for API-key authentication, permissions, rate limiting and routing.
+  annotations:
+    github.com/project-slug: nguyen-anh-hao/api-gateway
+  tags: [go, edge, auth]
+spec:
+  type: service
+  lifecycle: experimental
+  owner: nguyen-anh-hao
+  system: trading-exchange
+  dependsOn:
+    - component:order-service
+    - component:market-data-service
+    - component:risk-engine
+    - component:clearing-settlement
+    - component:promotion-service
+    - resource:redis

@@ -1,112 +1,37 @@
-# API Gateway (`api-gateway`)
+# api-gateway
 
-> **Edge Proxy, Authentication, Rate-Limiting & BFF Orchestration** written in Go.
+## Purpose
 
----
+The public edge of the exchange: it authenticates API keys, enforces permissions and per-IP rate limits, and routes requests to the services that own the domain. It keeps no business state and makes no trading decisions, so any replica can serve any request. Its non-goals are order state, matching, balances, the ledger and fee policy.
 
-## 1. Primary Responsibility
-The Gateway is the unified entry point for clients (Web UI, Mobile, Algorithmic Bots). It handles:
-1. **Security & Ingress:** JWT authentication, API Key validation, and per-account Token Bucket rate limiting.
-2. **Request Routing:** Validates requests and orchestrates downstream calls to `risk-engine`, `matching-engine`, `clearing-settlement`, and `promotion-service`.
-3. **Market Data Proxy:** Forwards `/ticker`, `/book`, `/trades-tape` and `/ohlcv` reads to `market-data-service` (no market-data storage, tape or OHLCV aggregation lives here).
-4. **Trade Event Producer:** Publishes each executed trade to NATS JetStream (`market.trades.executed`) for downstream consumers.
+## Domain knowledge
 
----
+Every API key resolves to one account identity and a set of permissions; the identity is forwarded internally as an account header and is trusted only when the internal token also matches. Write permissions are explicit: trading and deposits require the trade scope, withdrawals require their own scope, and a missing scope is rejected rather than downgraded. Requests may be signed with HMAC-SHA256 over the request URI for reads and over the raw body for writes, and signing becomes mandatory when the environment requires it.
 
-## 2. Boundaries & Downstream Services
-- **Downstream RPCs:**
-  - `matching-engine:9001` (Order placement & cancellation)
-  - `risk-engine:9002` (Pre-trade checks & balance queries)
-  - `clearing-settlement:8083` (Ledger, deposits, withdrawals)
-  - `promotion-service:8084` (Vouchers & reward tracking)
-  - `market-data-service:8085` (Ticker, order book, trade tape, OHLCV)
-- **Event Bus (producer):** Publishes executed trades to NATS JetStream subject `market.trades.executed`.
-- **Tracing:** OpenTelemetry trace propagation across all downstream HTTP/gRPC calls.
+Account identifiers are issued from a shared sequence that starts at 1001, so seeded demo accounts can never collide with real registrations. The seeded demo key is a development credential tied to account 1 and must never be enabled in a public deployment. Rate limiting is a token bucket keyed by client IP, defaulting to ten thousand requests per second, with zero disabling it entirely.
 
----
+The health, metrics, Swagger, account registration and WebSocket routes are deliberately outside the authenticated surface. Everything else passes through authentication, rate limiting and permission checks in that order. The gateway also proxies the live market-data stream unchanged, because terminal fan-out belongs to the market-data domain.
 
-## 3. Quick Start (Run in 2 minutes)
+## Decisions and consequences
 
-```bash
-# Set environment variables pointing to local or containerized services
-export MATCHING_ENGINE_ADDR="localhost:9001"
-export RISK_ENGINE_ADDR="localhost:9002"
-export SETTLEMENT_ADDR="localhost:8083"
-export PROMOTION_ADDR="localhost:8084"
-export NATS_ADDR="localhost:4222"
-export MARKET_DATA_ADDR="localhost:8085"
-export RATE_LIMIT_PER_SEC="10000"
+**Backend for Frontend as a reverse proxy.** The gateway shapes the public API and forwards to domain services instead of embedding their logic. The benefit is a single authenticated edge that scales statelessly; the cost is that every new capability needs a route, a client and a contract update.
 
-# Run locally
-go run ./cmd/main.go
-```
+**API key with optional HMAC.** Keys are easy for bots and scripts to use, and signatures protect body integrity. The signature covers the payload only, with no timestamp or nonce, so a captured signed request can be replayed while its key remains valid.
 
-Verify health & OpenAPI documentation:
-- Health check: `curl http://localhost:8080/health`
-- Swagger UI: Open browser at `http://localhost:8080/swagger/`
+**Distributed token bucket in Redis.** Limits are shared across replicas instead of being per process. The cost is that Redis is a hard startup dependency and adds a round trip to every request.
 
----
+**Contract-first OpenAPI.** The public surface is defined once in the OpenAPI document and the Go types are generated from it, with CI failing on drift. This keeps documentation and code aligned, at the price of a generation step for every API change.
 
-## 4. Executable Documentation (`requests.http`)
+## Operations and known limits
 
-```http
-### Health Check
-GET http://localhost:8080/health
+The service exits at startup when Redis is unreachable, because per-replica auth or rate-limit state would diverge. Key lookups use a local cache with a Redis fallback, so a key created on another replica is accepted without a restart. Signature verification has no replay window, and the demo key exists for local development only.
 
-### Place Limit Buy Order
-POST http://localhost:8080/orders
-Content-Type: application/json
+Rate-limit rejections return 429, and authentication or permission failures return 401 or 403, so clients should treat those as control-plane signals rather than trading errors. The gateway does not retry or circuit-break upstream calls today, which means a slow dependency shows up as latency at the edge. A local run needs Redis plus the internal service addresses; the full stack comes from the deployment repository, where the gateway is reachable on port 8080.
 
-{
-  "account_id": 1001,
-  "symbol": "AAPL",
-  "side": "BUY",
-  "type": "LIMIT",
-  "price": "150.00",
-  "quantity": "10"
-}
+## Future direction
 
-### Query Order Book Depth
-GET http://localhost:8080/book?symbol=AAPL&depth=20
-```
+Business: richer permission scopes and self-service key rotation are the natural next steps; nothing beyond the current account model is promised.
 
----
+Technical: pagination passthrough, upstream timeouts with retries and circuit breaking, then persistent gRPC client pools to remove connection churn. WebSocket backpressure and origin pinning are planned before exposing the stream to untrusted clients.
 
-## 5. Engineering Roadmap (Concurrency & Network Optimization)
-
-> Market-data concerns (trade tape, OHLCV aggregation, WebSocket streaming) now
-> live in `market-data-service`; this roadmap covers only the gateway's own scope:
-> ingress, routing, orchestration and event production.
-
-| Version | Phase | Optimization Target |
-| :--- | :--- | :--- |
-| **v1.0.0** | **Baseline Gateway** | Go standard HTTP server, JSON routing, in-memory rate limiter, OpenTelemetry integration. |
-| **v1.0.1** | **Pagination for Orders & Trades** | Add `limit`/`offset` query params to order/history and trades endpoints. |
-| **v1.0.2** | **Market-Data Proxy Resilience** | Add timeout, retry and circuit breaker to the `market-data-service` proxy calls. |
-| **v1.1.0** | **gRPC Client Pool & Multiplexing** | Replace HTTP/1.1 downstream clients with persistent HTTP/2 gRPC connection pools; keep-alive tuning to eliminate TCP connection churn. |
-| **v1.1.1** | **Retry & Circuit Breaker** | Add exponential backoff retries and circuit breaker for downstream service calls. |
-| **v1.2.0** | **Trade Event Producer Reliability** | Harden NATS publishing (backpressure, buffering, graceful shutdown) so no trade event is dropped. |
-| **v2.0.0** | **Kernel-Bypass / eBPF Gateway** | Offload DDoS mitigation and token-bucket rate limiting to eBPF / XDP. Target ingress latency < 50 µs. |
-| **v2.0.1** | **eBPF Rate Limiting Integration** | Deploy eBPF program for per-IP token bucket, integrate with auth middleware. |
-
----
-
-## 6. API Contract & Code Generation (OpenAPI-first)
-
-The gateway's public API surface is defined **once** in a single source of truth:
-
-- **Spec:** [`internal/swagger/openapi.yaml`](internal/swagger/openapi.yaml)
-- **Swagger UI:** served live from that spec at `/swagger/doc.yaml` (no hand-written
-  `openapi.json`).
-- **Go types:** generated from the spec into `internal/api/types.gen.go`.
-
-Regenerate everything with:
-
-```bash
-go generate ./...
-```
-
-CI (`.github/workflows/generate-check.yml`) re-runs generation and fails on any
-drift, so the spec, generated types and Swagger UI can never silently diverge.
-
-
+Boundaries: the public WebSocket proxy is the most likely piece to split into a dedicated streaming edge, and authentication could move to an external identity provider while keeping the internal identity header.
