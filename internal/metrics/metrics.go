@@ -113,6 +113,9 @@ func (g *Gauge) Set(v float64, labels ...string) {
 }
 
 func (g *Gauge) write(b *strings.Builder) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
 	fmt.Fprintf(b, "# HELP %s %s\n# TYPE %s gauge\n", g.name, g.help, g.name)
 	keys := make([]string, 0, len(g.values))
 	for k := range g.values {
@@ -169,6 +172,9 @@ func (r *Registry) writeAll(b *strings.Builder) {
 }
 
 func (c *Counter) write(b *strings.Builder) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	fmt.Fprintf(b, "# HELP %s %s\n# TYPE %s counter\n", c.name, c.help, c.name)
 	keys := make([]string, 0, len(c.values))
 	for k := range c.values {
@@ -183,6 +189,9 @@ func (c *Counter) write(b *strings.Builder) {
 }
 
 func (h *Histogram) write(b *strings.Builder) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	fmt.Fprintf(b, "# HELP %s %s\n# TYPE %s histogram\n", h.name, h.help, h.name)
 	keys := make([]string, 0, len(h.counts))
 	for k := range h.counts {
