@@ -17,6 +17,8 @@ var (
 	httpRequestDuration = metrics.Default.Histogram(
 		"http_request_duration_seconds", "HTTP request latency in seconds.",
 		[]float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10}, "method", "path")
+	httpRequestsInFlight = metrics.Default.Gauge(
+		"http_requests_in_flight", "HTTP requests currently being served.", "method")
 )
 
 type statusRecorder struct {
@@ -51,6 +53,8 @@ const slowRequestThreshold = 1 * time.Second
 func Logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		httpRequestsInFlight.Add(1, r.Method)
+		defer httpRequestsInFlight.Add(-1, r.Method)
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
 		elapsed := time.Since(start)
